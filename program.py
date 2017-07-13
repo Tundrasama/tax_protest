@@ -26,16 +26,18 @@ Output:
 Analysis:
     Use your preferred tool
 
+Version 1.1
+    • Street Lookup - use 's:<street name>' to look up all the properties on that street
+    • Neighborhood Lookup - use 'n:<neighborhood name>' to look up all the properties in that neighborhood
+
+    • summary data will now be written to summary.txt
+        ['property_id', 'geographic_id', 'owner_name', 'address', 'legal', 'market_value']
+
 Version 1.0
     • Single property (by property code) or loop (from root csv) lookup
-Version 1.1
-    • Street Lookup - not fully functioning yet, but will look up all properties on a street, just have to
-    finish formatting output
 
-Coming Soon
-    • Neighborhood Lookup
 """
-
+import re
 import requests
 import urllib
 from bs4 import BeautifulSoup
@@ -45,21 +47,23 @@ import numpy as np
 valuation_headers = ['property_id', 'year', 'valuation']
 improvements_headers = ['property_id', 'improvement', 'year', 'sqft']
 taxes_headers = ['property_id', 'tax']
+summary_headers = ['property_id', 'geographic_id', 'owner_name', 'address', 'legal', 'market_value']
+# TODO: no longer applies, once the street/neighborhood is entered, will just be looking up properties
 # change this to your neighborhood -- if no results, make sure MCAD website has the same spelling
 neighborhood = "WEDGEWOOD PARK"
 neighborhood = neighborhood.replace(" ", "%20")
 url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&stype=legal&sdata={}&id=".format(
     neighborhood)
+base_url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&id="
 
 
 def choice():
+    create_files()
     property_id = input(
-        "Enter a Property ID, street name (street:name), neighborhood name (neighborhood:name), or type 'loop' to process an existing csv:")
+        "Enter a Property ID, street name (s:<name>), or neighborhood name (n:<name>):")
     if property_id != "":
-        if property_id.strip() == 'loop':
-            loop_csv()
-        elif len(property_id.strip()) == 10 and property_id[0].strip().capitalize() == "R":
-            print(neighborhood)
+        if len(property_id.strip()) == 10 and property_id[0].strip().capitalize() == "R":
+            # print(neighborhood)
             property_id = property_id.strip().capitalize()
             print("Looking up property: {} in {}".format(property_id, neighborhood.replace("%20", " ")))
             try:
@@ -67,57 +71,78 @@ def choice():
             except:
                 write_error(property_id, 'lookup error')
             choice()
-        elif 'neighborhood:' in property_id.strip():
-            fetch_neighborhood_properties(property_id)
-        elif 'street:' in property_id.strip():
-            fetch_street_properties(property_id)
+        elif 'n:' in property_id.strip() or 's:' in property_id.strip():
+            fetch_properties(property_id)
+        else:
+            print("Unrecognized command")
+            quit()
 
 
-def fetch_neighborhood_properties(neighborhood):
-    pass
-
-
-def fetch_street_properties(street):
-    # TODO:doesn't necessarily have to just be street, could now just determine if street: or neighborhood: was entered, although url would change
-    if "street:" in street:
-        street = street.replace("street:", "").replace(" ", "%20")
-        print("Fetching properties for: {}".format(street.replace("%20", " ")))
-        street_url = "http://iswdataclient.azurewebsites.net/webSearchAddress.aspx?dbkey=midlandcad&stype=situs&sdata="
-        street_url = "{}{}%7c0%7c".format(street_url, street)
-    elif "neighborhood:" in street:
-        pass
+def fetch_properties(loc_type):
+    if loc_type[0] == 's':
+        stype = 'situs'
+        location = loc_type.replace("s:", "").replace(" ", "%20")
+        search_url = "http://iswdataclient.azurewebsites.net/webSearchAddress.aspx?dbkey=midlandcad&stype={}&sdata=".format(
+            stype)
+        search_url = "{}{}%7c0%7c".format(search_url, location)  # addition necessary when looking up street
+    elif loc_type[0] == 'n':
+        stype = 'legal'
+        location = loc_type.replace("n:", "").replace(" ", "%20")
+        search_url = "http://iswdataclient.azurewebsites.net/webSearchAddress.aspx?dbkey=midlandcad&stype={}&sdata={}".format(
+            stype, location)
 
     form_data = {
-        'ucSearchAddress_searchstreet': street,
+        'ucSearchAddress_searchstreet': location,
     }
 
     data = urllib.parse.urlencode(form_data).encode("utf-8")
-    req = urllib.request.Request(street_url)
+    req = urllib.request.Request(search_url)
     html_txt = urllib.request.urlopen(req, data=data)
     bs = BeautifulSoup(html_txt, "lxml")
-    # TODO may need to move for loops below, once there is a way to get the data necessary, id would be included
     raw_data = create_raw_data(bs)
     property_ids = []
+    property_data = []
+    property_summary_data = [[]]
     for i, properties in enumerate(raw_data):
         if len(properties) != 0:
-            print(i, properties)
-            property_ids.append(properties[1])
+            if properties[0] == 'View Property':
+                # print(i, properties)
+                property_ids.append(properties[1])
+                for x in range(1, len(properties) - 1):
+                    property_data.append(properties[x])
 
-    if len(properties) == 0:
-        print("No properties found for '{}'.".format(street))
+                property_summary_data.append(property_data)
+                with open("summary.txt", 'a', newline='') as outfile:
+                    outfile.write("{},{},{},{},{},{}\n".format(property_data[0],
+                                                               property_data[1],
+                                                               property_data[2],
+                                                               property_data[3],
+                                                               property_data[4],
+                                                               property_data[5]))
+
+                property_data = []
+
+    # print(property_summary_data)
+    # print(len(property_ids))
+
+    if len(property_ids) == 0:
+        print("No properties found for '{}'.".format(location))
     else:
-        print("Properties: {}".format(property_ids))
+        print("Fetching information for properties...")
+        get_metrics(property_ids, property_summary_data)
+        # print("Properties: {}".format(property_ids))
 
 
 def create_raw_data(soup):
-    # this should work for street name and neighborhood
-    trs = soup.findAll(lambda tag: tag.has_attr('bgcolor') and tag['bgcolor'] == "#E7E7EF")
+    trs = soup.findAll('tr')
+
     property_info = [[]]
     indv_prop = []
     for i, tr in enumerate(trs):
-
-        for td in tr.findAll('td'):
-            indv_prop.append(td.text)
+        if "R000" in tr.text:
+            for td in tr.findAll('td'):
+                if td.text != "":
+                    indv_prop.append(td.text)
 
         property_info.append(indv_prop)
         indv_prop = []
@@ -163,6 +188,11 @@ def create_files():
     with open('taxes.txt', 'w') as outfile:
         for item in taxes_headers:
             outfile.write("{},".format(item))
+    with open('summary.txt', 'w') as outfile:
+        for item in summary_headers:
+            outfile.write("{},".format(item))
+    with open('errors.txt', 'w') as outfile:
+        outfile.write("property_id,error")
 
 
 def write_error(property_id, error_type):
@@ -170,8 +200,39 @@ def write_error(property_id, error_type):
         outfile.write("{}{}\n".format(property_id, error_type))
 
 
+def get_metrics(properties, data):
+    valuation = []
+    improvements = []
+    taxes = []
+    for property_id in properties:
+        url = "{}{}".format(base_url, property_id)
+        html_txt = urllib.request.urlopen(url)
+        bs = BeautifulSoup(html_txt, "lxml")
+        for sublist in data:
+            if property_id in sublist:
+                print("------------------------------")
+                print("Address: {}".format(sublist[3]))
+        try:
+            valuation = get_valuation(bs)
+        except:
+            write_error(property_id, 'valuation error')
+        # get improvements information
+        try:
+            improvements = get_improvements(bs)
+        except:
+            write_error(property_id, 'improvements error')
+        # get taxes information
+        try:
+            taxes = get_taxes(bs)
+        except:
+            write_error(property_id, 'taxes error')
+        # Format for output
+        entries = assemble_entries(valuation, improvements, taxes, property_id)
+
+
+""" - will be removing, no longer necessary
 def loop_csv():
-    # TODO: adjust to allow for passing of a list of properties or make new def
+    # TODO: looping the csv won't be necessary anymore as streets and neighborhoods stored as list
     # create output files
     create_files()
     # open csv containing urls for all of the homes in my neighborhood
@@ -211,6 +272,7 @@ def loop_csv():
             # Format for output
             entries = assemble_entries(valuation, improvements, taxes, property_id)
             str_url = ""
+"""
 
 
 def get_address(soup):
@@ -319,9 +381,9 @@ def assemble_entries(val, imprv, tax, property_id):
         sqft = imprv[x][2]
         sqft = sqft.replace(",", "")
         # presentation view
-        improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
+        # improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
         # csv view
-        # improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
+        improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
         x += 1
 
     improvement_lines = "\n".join(improvement_lines)
