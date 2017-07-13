@@ -59,7 +59,7 @@ def choice():
         if len(property_id.strip()) == 10 and property_id[0].strip().capitalize() == "R":
             # print(neighborhood)
             property_id = property_id.strip().capitalize()
-            print("Looking up property: {} in {}".format(property_id, neighborhood.replace("%20", " ")))
+            print("Looking up property: {}".format(property_id))
             try:
                 single_lookup(property_id)
             except:
