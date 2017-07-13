@@ -1,5 +1,5 @@
 """
-Midland Central Appraisal District Scraper v1.0
+Midland Central Appraisal District Scraper v1.1
 
 Operation:
     • Prompted to enter a single property to look up, otherwise it will loop the csv file in root
@@ -26,17 +26,14 @@ Output:
 Analysis:
     Use your preferred tool
 
-Future Versions:
-    • get list of neighborhoods, scrape all properties, eliminate duplicates (if any)
-         • Didn't mess with, but would be easy to scrape a neighborhood
-                • link is:
-                    http://iswdataclient.azurewebsites.net/webSearchLegal.aspx?dbkey=midlandcad&stype=legal&sdata=NEIGHBORHOOD_NAME#top
-                • just replace neighborhood name with your neighborhood and you could fetch the results with
-                    BeautifulSoup (<a id="ucResultsGrid_)
-            • Before I started this I had already copy and pasted the 700 or so homes in my neighborhood to excel
-                • So as of now, it depends on a csv in root containing the urls
-                    • or just the property ids and you can prepend:
-                        http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&stype=legal&sdata=NEIGHBORHOOD_NAME&id=
+Version 1.0
+    • Single property (by property code) or loop (from root csv) lookup
+Version 1.1
+    • Street Lookup - not fully functioning yet, but will look up all properties on a street, just have to
+    finish formatting output
+
+Coming Soon
+    • Neighborhood Lookup
 """
 
 import requests
@@ -56,10 +53,10 @@ url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&
 
 
 def choice():
-    property_id = input("Enter a Property ID or type anything else to loop:")
+    property_id = input(
+        "Enter a Property ID, street name (street:name), neighborhood name (neighborhood:name), or type 'loop' to process an existing csv:")
     if property_id != "":
-        if len(property_id.strip()) != 10 and property_id[0].strip() != "R":
-            print("Running Loop!")
+        if property_id.strip() == 'loop':
             loop_csv()
         elif len(property_id.strip()) == 10 and property_id[0].strip().capitalize() == "R":
             print(neighborhood)
@@ -70,6 +67,62 @@ def choice():
             except:
                 write_error(property_id, 'lookup error')
             choice()
+        elif 'neighborhood:' in property_id.strip():
+            fetch_neighborhood_properties(property_id)
+        elif 'street:' in property_id.strip():
+            fetch_street_properties(property_id)
+
+
+def fetch_neighborhood_properties(neighborhood):
+    pass
+
+
+def fetch_street_properties(street):
+    # TODO:doesn't necessarily have to just be street, could now just determine if street: or neighborhood: was entered, although url would change
+    if "street:" in street:
+        street = street.replace("street:", "").replace(" ", "%20")
+        print("Fetching properties for: {}".format(street.replace("%20", " ")))
+        street_url = "http://iswdataclient.azurewebsites.net/webSearchAddress.aspx?dbkey=midlandcad&stype=situs&sdata="
+        street_url = "{}{}%7c0%7c".format(street_url, street)
+    elif "neighborhood:" in street:
+        pass
+
+    form_data = {
+        'ucSearchAddress_searchstreet': street,
+    }
+
+    data = urllib.parse.urlencode(form_data).encode("utf-8")
+    req = urllib.request.Request(street_url)
+    html_txt = urllib.request.urlopen(req, data=data)
+    bs = BeautifulSoup(html_txt, "lxml")
+    # TODO may need to move for loops below, once there is a way to get the data necessary, id would be included
+    raw_data = create_raw_data(bs)
+    property_ids = []
+    for i, properties in enumerate(raw_data):
+        if len(properties) != 0:
+            print(i, properties)
+            property_ids.append(properties[1])
+
+    if len(properties) == 0:
+        print("No properties found for '{}'.".format(street))
+    else:
+        print("Properties: {}".format(property_ids))
+
+
+def create_raw_data(soup):
+    # this should work for street name and neighborhood
+    trs = soup.findAll(lambda tag: tag.has_attr('bgcolor') and tag['bgcolor'] == "#E7E7EF")
+    property_info = [[]]
+    indv_prop = []
+    for i, tr in enumerate(trs):
+
+        for td in tr.findAll('td'):
+            indv_prop.append(td.text)
+
+        property_info.append(indv_prop)
+        indv_prop = []
+
+    return property_info
 
 
 def single_lookup(property_id):
@@ -92,6 +145,10 @@ def single_lookup(property_id):
         taxes = get_taxes(bs)
     except:
         write_error(property_id, 'taxes error')
+    try:
+        address = get_address(bs)
+    except:
+        write_error(property_id, 'address error')
     entries = assemble_entries(valuation, improvements, taxes, property_id)
 
 
@@ -114,6 +171,7 @@ def write_error(property_id, error_type):
 
 
 def loop_csv():
+    # TODO: adjust to allow for passing of a list of properties or make new def
     # create output files
     create_files()
     # open csv containing urls for all of the homes in my neighborhood
@@ -153,6 +211,11 @@ def loop_csv():
             # Format for output
             entries = assemble_entries(valuation, improvements, taxes, property_id)
             str_url = ""
+
+
+def get_address(soup):
+    address = soup.find(lambda tag: tag.has_attr('id') and tag['id'] == "webprop_situs").get_text()
+    print(address)
 
 
 def get_valuation(soup):
@@ -256,9 +319,9 @@ def assemble_entries(val, imprv, tax, property_id):
         sqft = imprv[x][2]
         sqft = sqft.replace(",", "")
         # presentation view
-        # improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
+        improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
         # csv view
-        improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
+        # improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
         x += 1
 
     improvement_lines = "\n".join(improvement_lines)
