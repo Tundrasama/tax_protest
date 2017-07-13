@@ -2,9 +2,7 @@
 Midland Central Appraisal District Scraper v1.1
 
 Operation:
-    • Prompted to enter a single property to look up, otherwise it will loop the csv file in root
-    containing the urls.
-****• Need to change the neighborhood variable to your neighborhood
+    • Prompted to enter a a single property or use the street/neighborhood lookup
 
 Output:
     Example:
@@ -50,10 +48,6 @@ taxes_headers = ['property_id', 'tax']
 summary_headers = ['property_id', 'geographic_id', 'owner_name', 'address', 'legal', 'market_value']
 # TODO: no longer applies, once the street/neighborhood is entered, will just be looking up properties
 # change this to your neighborhood -- if no results, make sure MCAD website has the same spelling
-neighborhood = "WEDGEWOOD PARK"
-neighborhood = neighborhood.replace(" ", "%20")
-url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&stype=legal&sdata={}&id=".format(
-    neighborhood)
 base_url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&id="
 
 
@@ -155,7 +149,7 @@ def single_lookup(property_id):
     valuation = []
     improvements = []
     taxes = []
-    str_url = "{}{}".format(url, property_id)
+    str_url = "{}{}".format(base_url, property_id)
     html_txt = urllib.request.urlopen(str_url)
     bs = BeautifulSoup(html_txt, "lxml")
     try:
@@ -228,51 +222,6 @@ def get_metrics(properties, data):
             write_error(property_id, 'taxes error')
         # Format for output
         entries = assemble_entries(valuation, improvements, taxes, property_id)
-
-
-""" - will be removing, no longer necessary
-def loop_csv():
-    # TODO: looping the csv won't be necessary anymore as streets and neighborhoods stored as list
-    # create output files
-    create_files()
-    # open csv containing urls for all of the homes in my neighborhood
-    with open('urls.csv', 'r') as infile:
-        # create an iterable reader object from the csv file
-        reader = csv.reader(infile)
-        # setup lists (arrays)
-        valuation = []
-        improvements = []
-        taxes = []
-        # loop through each row of the file
-        for row in reader:
-            # was having trouble with url encoding ':' in 'http:' incorrectly, converted to str to be sure
-            # other ways to do this, I'm sure
-            str_url = ''.join(row)
-            # get just the last 10 digits of the url for the property_id
-            property_id = str_url[-10:]
-            # get all of the html from the url
-            html_txt = urllib.request.urlopen(str_url)
-            # create a beautifulsoup object -- great for getting info out of html
-            bs = BeautifulSoup(html_txt, "lxml")
-            # get valuation information
-            try:
-                valuation = get_valuation(bs)
-            except:
-                write_error(property_id, 'valuation error')
-            # get improvements information
-            try:
-                improvements = get_improvements(bs)
-            except:
-                write_error(property_id, 'improvements error')
-            # get taxes information
-            try:
-                taxes = get_taxes(bs)
-            except:
-                write_error(property_id, 'taxes error')
-            # Format for output
-            entries = assemble_entries(valuation, improvements, taxes, property_id)
-            str_url = ""
-"""
 
 
 def get_address(soup):
