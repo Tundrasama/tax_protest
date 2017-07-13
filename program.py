@@ -46,8 +46,6 @@ valuation_headers = ['property_id', 'year', 'valuation']
 improvements_headers = ['property_id', 'improvement', 'year', 'sqft']
 taxes_headers = ['property_id', 'tax']
 summary_headers = ['property_id', 'geographic_id', 'owner_name', 'address', 'legal', 'market_value']
-# TODO: no longer applies, once the street/neighborhood is entered, will just be looking up properties
-# change this to your neighborhood -- if no results, make sure MCAD website has the same spelling
 base_url = "http://iswdataclient.azurewebsites.net/webProperty.aspx?dbkey=midlandcad&id="
 
 
