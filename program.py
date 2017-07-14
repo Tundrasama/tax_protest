@@ -24,15 +24,22 @@ Output:
 Analysis:
     Use your preferred tool
 
-Version 1.1
+(for) Version 1.2:
+    • Single Lookup doesn't pull raw data -- need to use part of the fetch_properties code
+
+Version 1.1:
     • Street Lookup - use 's:<street name>' to look up all the properties on that street
     • Neighborhood Lookup - use 'n:<neighborhood name>' to look up all the properties in that neighborhood
 
     • summary data will now be written to summary.txt
         ['property_id', 'geographic_id', 'owner_name', 'address', 'legal', 'market_value']
 
-Version 1.0
+Version 1.0:
     • Single property (by property code) or loop (from root csv) lookup
+
+Limits:
+    • Most records that can be pulled at once appears to be 1024
+        • trying to bypass this and get every record in Midland
 
 """
 import re
@@ -65,9 +72,21 @@ def choice():
             choice()
         elif 'n:' in property_id.strip() or 's:' in property_id.strip():
             fetch_properties(property_id)
+        elif property_id == 'all':
+            fetch_every_property()
         else:
             print("Unrecognized command")
             quit()
+
+
+def fetch_every_property():
+    # trying to pull every record in Midland, TX
+    base_id = "R"
+    for x in range(1, 250000):
+        property_id = x
+        property_id = format(property_id, "09d")
+        property_id = "{}{}".format(base_id, property_id)
+        single_lookup(property_id)
 
 
 def fetch_properties(loc_type):
@@ -143,7 +162,6 @@ def create_raw_data(soup):
 
 
 def single_lookup(property_id):
-    create_files()
     valuation = []
     improvements = []
     taxes = []
@@ -167,29 +185,6 @@ def single_lookup(property_id):
     except:
         write_error(property_id, 'address error')
     entries = assemble_entries(valuation, improvements, taxes, property_id)
-
-
-def create_files():
-    # create each txt file for output and input headers
-    with open('valuation.txt', 'w') as outfile:
-        for item in valuation_headers:
-            outfile.write("{},".format(item))
-    with open('improvements.txt', 'w') as outfile:
-        for item in improvements_headers:
-            outfile.write("{},".format(item))
-    with open('taxes.txt', 'w') as outfile:
-        for item in taxes_headers:
-            outfile.write("{},".format(item))
-    with open('summary.txt', 'w') as outfile:
-        for item in summary_headers:
-            outfile.write("{},".format(item))
-    with open('errors.txt', 'w') as outfile:
-        outfile.write("property_id,error")
-
-
-def write_error(property_id, error_type):
-    with open('errors.txt', 'a', newline='') as outfile:
-        outfile.write("{}{}\n".format(property_id, error_type))
 
 
 def get_metrics(properties, data):
@@ -222,9 +217,10 @@ def get_metrics(properties, data):
         entries = assemble_entries(valuation, improvements, taxes, property_id)
 
 
+# TODO: still used with single lookup, but need to incorporate address lookup from fetch_properties to single_lookup
 def get_address(soup):
     address = soup.find(lambda tag: tag.has_attr('id') and tag['id'] == "webprop_situs").get_text()
-    print(address)
+    # print(address)
 
 
 def get_valuation(soup):
@@ -310,7 +306,7 @@ def assemble_entries(val, imprv, tax, property_id):
                                                                         property_id, val[0][1], val2.replace(",", ""),
                                                                         property_id, val[0][2], val3.replace(",", ""),
                                                                         property_id, val[0][3], val4.replace(",", ""))
-    print(valuation_lines)
+    # print(valuation_lines)
     # write to file
     with open("valuation.txt", 'a', newline='') as outfile:
         outfile.write(valuation_lines)
@@ -324,28 +320,54 @@ def assemble_entries(val, imprv, tax, property_id):
     """
     improvement_lines = []
     x = 0
-    while x < imprv.shape[0]:
-        sqft = imprv[x][2]
-        sqft = sqft.replace(",", "")
-        # presentation view
-        # improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
-        # csv view
-        improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
-        x += 1
+    try:
+        while x < imprv.shape[0]:
+            sqft = imprv[x][2]
+            sqft = sqft.replace(",", "")
+            # presentation view
+            # improvement_lines.append("{} ({}) - {}sqft".format(imprv[x][0].capitalize(), imprv[x][1], sqft))
+            # csv view
+            improvement_lines.append("{},{},{},{}".format(property_id, imprv[x][0], imprv[x][1], sqft))
+            x += 1
 
-    improvement_lines = "\n".join(improvement_lines)
-    print(improvement_lines)
-    # write to file
-    with open("improvements.txt", 'a', newline='') as outfile:
-        outfile.write('\n{}.'.format(improvement_lines))
+        improvement_lines = "\n".join(improvement_lines)
+        # print(improvement_lines)
+        # write to file
+        with open("improvements.txt", 'a', newline='') as outfile:
+            outfile.write('\n{}.'.format(improvement_lines))
+    except:
+        write_error(property_id, 'assembling improvements error')
 
     # not much extra formatting required for taxes
     """
     should look like: R000050407,$3,192.19
     """
-    print("{},{}".format(property_id, tax))
+    # print("{},{}".format(property_id, tax))
     with open("taxes.txt", 'a', newline='') as outfile:
         outfile.write("\n{},{}".format(property_id, tax))
+
+
+def create_files():
+    # create each txt file for output and input headers
+    with open('valuation.txt', 'w') as outfile:
+        for item in valuation_headers:
+            outfile.write("{},".format(item))
+    with open('improvements.txt', 'w') as outfile:
+        for item in improvements_headers:
+            outfile.write("{},".format(item))
+    with open('taxes.txt', 'w') as outfile:
+        for item in taxes_headers:
+            outfile.write("{},".format(item))
+    with open('summary.txt', 'w') as outfile:
+        for item in summary_headers:
+            outfile.write("{},".format(item))
+    with open('errors.txt', 'w') as outfile:
+        outfile.write("property_id,error")
+
+
+def write_error(property_id, error_type):
+    with open('errors.txt', 'a', newline='') as outfile:
+        outfile.write("{}{}\n".format(property_id, error_type))
 
 
 def main():
